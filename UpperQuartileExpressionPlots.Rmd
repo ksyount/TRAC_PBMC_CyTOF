@@ -1,0 +1,510 @@
+---
+title: "Upper Quartile Expression Plots"
+output: html_document
+date: "2024-09-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load Libraries & Import Data
+
+```{r prep, echo=FALSE}
+library(tidyverse)
+library(readxl)
+library(ggtext)
+library(ggh4x) # facet_nested()
+
+PopNameOrder <- c(
+  "CD4_TN", "CD4_TSCM", "CD4_Tfh", "CD4_TCM_Th1_2DN", "CD4_TCM_Th1", "CD4_TCM_Th2", 
+  "CD4_TCM_Th1_2DP", "CD4_TCM_Th17", "CD4_TCM_Th1_17", "CD4_TCM_Th17DN", "CD4_TCM_Th17DP", 
+  "CD4_TEM_Th1_2DN", "CD4_TEM_Th1", "CD4_TEM_Th2", "CD4_TEM_Th1_2DP", "CD4_TEM_Th17", 
+  "CD4_TEM_Th1_17", "CD4_TEM_Th17DN", "CD4_TEM_Th17DP", "CD4_TEMRA", "CD4_Treg", 
+  "CD8_TN", "CD8_TSCM", "CD8_Tfh", "CD8_TCM_Tc1_2DN", "CD8_TCM_Tc1", "CD8_TCM_Tc2", 
+  "CD8_TCM_Tc1_2DP", "CD8_TCM_Tc17", "CD8_TCM_Tc1_17", "CD8_TCM_Tc17DN", "CD8_TCM_Tc17DP", 
+  "CD8_TEM_Tc1_2DN", "CD8_TEM_Tc1", "CD8_TEM_Tc2", "CD8_TEM_Tc1_2DP", "CD8_TEM_Tc17", 
+  "CD8_TEM_Tc1_17", "CD8_TEM_Tc17DN", "CD8_TEM_Tc17DP", "CD8_TEMRA", "CD8_Treg")
+
+PopLabelOrder <- PopNameOrder %>% 
+  str_replace_all("_", " ") %>% 
+  str_replace_all(" T.1 2DN", "") %>% 
+  str_replace_all("1 2", "1/2") %>% 
+  str_replace_all("1 17", "1/17")
+
+expressiondata <- "data/expressiondata.csv" %>% 
+  read_csv() %>% 
+  mutate(PTID = as.factor(PTID),
+       Visit = as.factor(Visit),
+       Infection = as.factor(Infection),
+       FollowUp = as.factor(FollowUp),
+       Ascension = as.factor(Ascension),
+       PopName = as.factor(PopName),
+       PopIndex = as.factor(PopIndex)) %>% 
+  mutate(PopName = factor(PopName, levels = PopNameOrder))
+
+allupperqdata <- "data/allupperqdata.csv" %>%
+  read_csv() %>% 
+  mutate(PTID = as.factor(PTID),
+     Visit = as.factor(Visit),
+     Infection = as.factor(Infection),
+     FollowUp = as.factor(FollowUp),
+     Ascension = as.factor(Ascension),
+     PopName = as.factor(PopName),
+     PopIndex = as.factor(PopIndex)) %>% 
+  mutate(PopName = factor(PopName, levels = PopNameOrder)) %>% 
+  mutate(PopLabel = factor(PopLabel, levels = PopLabelOrder))
+```
+
+# Uninf vs CT+ vs CT+CoP
+
+## Build plot function
+
+```{r build function}
+
+plotinf <- function(boxdata, jitterdata, aspect_ratio, y_variable) {
+  plot <- boxdata %>%
+    ggplot(aes(x = PopLabel, 
+               y = !!sym(y_variable),  # Convert y_variable to symbol
+               fill = Infection)) +
+    geom_boxplot(color = "black", 
+                 outlier.shape = NA, 
+                 coef = 0, 
+                 size = 0.25) +
+    scale_fill_manual(values = c("#7CAE00", "#F8766D", "#CD9600"),
+                      labels = c("Uninf", "CT+", "CT+CoP")) +
+    geom_jitter(data = jitterdata, 
+                aes(x = PopLabel, 
+                    y = !!sym(y_variable),  # Convert y_variable to symbol
+                    color = Infection),
+                size = 0.1,
+                position = position_jitterdodge(jitter.width = 0.15, 
+                                                dodge.width = 0.75)) +  
+    scale_color_manual(values = c("#3F5E00", "#A83C34", "#7D6000"), 
+                       guide = "none") +
+    coord_cartesian(ylim = c(NA, max(jitterdata[[y_variable]]))) + 
+    labs(y = y_variable) +
+    theme_classic() +
+    theme(aspect.ratio = aspect_ratio,
+          axis.title = element_text(size = 11, face = "bold"),  # Increase axis title font size
+          axis.title.x = element_blank(),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text = element_text(size = 11, color = "black"),
+          legend.text = element_text(size = 11),
+          legend.title = element_blank(),
+          legend.background = element_rect(fill = "transparent"),
+          legend.box.margin = margin(0, 0, 0, 0),
+          legend.spacing.x = unit(0, "mm"),
+          legend.spacing.y = unit(0, "mm"),
+          legend.position = "top",
+          legend.direction = "horizontal")
+  
+  return(plot)
+}
+```
+
+## Build plots based on P\<0.001 threshold
+
+### CD4CD25
+
+```{r plot CD4 CD25 inf}
+signif <- c(17,2,7,15,20,14,9,5,6,16,4,12) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD4CD25 <- plotinf(boxdata, jitterdata, aspect_ratio, "CD25")
+  
+CD4CD25
+```
+
+### CD4CCR7
+
+```{r plot CD4 CCR7 inf}
+signif <- c(21, 20, 18, 6, 7, 5, 19, 2, 9, 14, 17) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD4CCR7 <- plotinf(boxdata, jitterdata, aspect_ratio, "CCR7")
+  
+print(CD4CCR7)
+```
+
+### CD4CCR5
+
+```{r plot CD4 CCR5 inf}
+signif <- c(6, 14, 17, 10, 1, 13, 21, 9, 5) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD4CCR5 <- plotinf(boxdata, jitterdata, aspect_ratio, "CCR5")
+  
+print(CD4CCR5)
+```
+
+### CD4CD95
+
+```{r plot CD4 CD95 inf}
+signif <- c(17, 2, 14, 15) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD4CD95 <- plotinf(boxdata, jitterdata, aspect_ratio, "CD95")
+  
+print(CD4CD95)
+```
+
+### CD4CD38
+
+```{r plot CD4 CD38 inf}
+signif <- c(14, 15, 10) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD4CD38 <- plotinf(boxdata, jitterdata, aspect_ratio, "CD38")
+  
+print(CD4CD38)
+```
+
+### CD4CD28
+
+```{r plot CD4 CD28 inf}
+signif <- c(4, 19) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD4CD28 <- plotinf(boxdata, jitterdata, aspect_ratio, "CD28")
+  
+print(CD4CD28)
+```
+
+### CD8CCR7
+
+```{r plot CD8 CCR7 inf}
+signif <- c(41, 39, 29, 40) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD8CCR7 <- plotinf(boxdata, jitterdata, aspect_ratio, "CCR7")
+  
+print(CD8CCR7)
+```
+
+### CD8CD25
+
+```{r plot CD8 CD25 inf}
+signif <- c(41, 39) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD8CD25 <- plotinf(boxdata, jitterdata, aspect_ratio, "CD25")
+  
+print(CD8CD25)
+```
+
+### CD8CCR5
+
+```{r plot CD8 CCR5 inf}
+signif <- c(38, 30, 37, 41, 28, 40) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD8CCR5 <- plotinf(boxdata, jitterdata, aspect_ratio, "CCR5")
+  
+print(CD8CCR5)
+```
+
+### CD8CD28
+
+```{r plot CD8 CD28 inf}
+signif <- c(23, 22, 40) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD8CD28 <- plotinf(boxdata, jitterdata, aspect_ratio, "CD28")
+  
+print(CD8CD28)
+```
+
+### CD8CD38
+
+```{r plot CD8 CD38 inf}
+signif <- c(32, 23, 22) # P<0.001 for either CT+ or CT+CoP at enrollment
+
+aspect_ratio <- 3.6 / length(signif)
+aspect_ratio
+
+boxdata <- expressiondata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)   
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 0 | Infection == 1 | Infection == 2, 
+         Visit == 0, 
+         PopIndex %in% signif)
+
+CD8CD38 <- plotinf(boxdata, jitterdata, aspect_ratio, "CD38")
+  
+print(CD8CD38)
+```
+
+# FU+ vs FU-
+
+## Modify PopLabel to define line breaks for x-axis labels
+```{r PopLabel line breaks}
+PopLabelOrder <- PopLabelOrder %>% 
+  str_replace_all("TEM ", "TEM\n") %>% 
+  str_replace_all("TCM ", "TCM\n")
+
+expressiondata <- expressiondata %>%
+  mutate(PopLabel = str_replace_all(PopLabel, "TEM ", "TEM\n")) %>% 
+  mutate(PopLabel = str_replace_all(PopLabel, "TCM ", "TCM\n")) %>% 
+  mutate(PopLabel = factor(PopLabel, levels = PopLabelOrder)) 
+
+allupperqdata <- allupperqdata %>%
+  mutate(PopLabel = str_replace_all(PopLabel, "TEM ", "TEM\n")) %>% 
+  mutate(PopLabel = str_replace_all(PopLabel, "TCM ", "TCM\n")) %>% 
+  mutate(PopLabel = factor(PopLabel, levels = PopLabelOrder)) 
+```
+
+## Build plot function
+
+```{r build function}
+plotFU <- function(boxdata, jitterdata, y_variable) {
+  plot <- boxdata %>%
+    ggplot(aes(x = FollowUp, 
+               y = !!sym(y_variable),
+               fill = FollowUp)) +
+    geom_boxplot(aes(alpha = Visit),
+                 color = "black", 
+                 outlier.shape = NA, 
+                 coef = 0, 
+                 size = 0.25) +
+    scale_fill_manual(values = c("#00BE67", "#00A9FF"),
+                      labels = c("FU-", "FU+")) +
+    scale_alpha_manual(values = c(1, 0.4)) +
+    geom_jitter(data = jitterdata, 
+                aes(x = FollowUp, 
+                    y = !!sym(y_variable),
+                    color = interaction(FollowUp, Visit)),
+                size = 0.1,
+                position = position_jitterdodge(jitter.width = 1, 
+                                                dodge.width = 0.75)) +  
+    scale_color_manual(values = c("#006D3A", "#004972", "#008E4B", "#006799"), 
+                       guide = "none") +
+    coord_cartesian(ylim = c(NA, max(jitterdata[[y_variable]]))) + 
+    facet_nested_wrap(~ PopLabel + Visit, 
+                      nrow = 1, 
+                      strip.position = "bottom",
+                      nest_line = element_line(color = "black", linewidth = 0.5),
+                      labeller = labeller(Visit = c("0" = "En", "1" = "1M"))) +
+    guides(alpha = "none") +
+    labs(y = y_variable) +
+    theme_classic() +
+    theme(aspect.ratio = 4,
+          axis.title = element_text(size = 11, face = "bold"),  # Increase axis title font size
+          axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text = element_text(size = 11, color = "black"),
+          strip.placement = "outside",
+          strip.background = element_blank(),
+          legend.text = element_text(size = 11),
+          legend.title = element_blank(),
+          legend.background = element_rect(fill = "transparent"),
+          legend.box.margin = margin(0, 0, 0, 0),
+          legend.spacing.x = unit(0, "mm"),
+          legend.spacing.y = unit(0, "mm"),
+          legend.position = "top",
+          legend.direction = "horizontal")
+  
+  return(plot)
+}
+```
+
+### Build plots based on P\<0.05 threshold (CT+ participants only)
+
+## FUCD4CCR7
+```{r plot FUCD4CCR7}
+signif <- c(17, 19, 20, 12, 21, 16, 6) # P<0.05 for either CT+ or CT+CoP at enrollment
+
+boxdata <- expressiondata %>%
+  filter(Infection == 1, 
+         FollowUp != 2, 
+         PopIndex %in% signif)  
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 1, 
+         FollowUp != 2, 
+         PopIndex %in% signif)  
+
+FUCD4CCR7 <- plotFU(boxdata, jitterdata, "CCR7")
+  
+print(FUCD4CCR7)
+```
+
+## FUCD8CCR7
+```{r plot FUCD8CCR7}
+signif <- c(31, 29, 32, 40) # P<0.05 for either CT+ or CT+CoP at enrollment
+
+boxdata <- expressiondata %>%
+  filter(Infection == 1, 
+         FollowUp != 2, 
+         PopIndex %in% signif)  
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 1, 
+         FollowUp != 2, 
+         PopIndex %in% signif)  
+
+FUCD8CCR7 <- plotFU(boxdata, jitterdata, "CCR7")
+  
+print(FUCD8CCR7)
+```
+
+## FUCD4CCR6
+```{r plot FUCD4CCR6}
+signif <- c(9, 20, 17, 7) # P<0.05 for either CT+ or CT+CoP at enrollment
+
+boxdata <- expressiondata %>%
+  filter(Infection == 1, 
+         FollowUp != 2, 
+         PopIndex %in% signif)  
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 1, 
+         FollowUp != 2, 
+         PopIndex %in% signif)  
+
+FUCD4CCR6 <- plotFU(boxdata, jitterdata, "CCR6")
+  
+print(FUCD4CCR6)
+```
+
+## FUCD8CD127
+```{r plot FUCD8CD127}
+signif <- c(22, 23) # P<0.05 for either CT+ or CT+CoP at enrollment
+
+boxdata <- expressiondata %>%
+  filter(Infection == 1, 
+         FollowUp != 2, 
+         PopIndex %in% signif)  
+
+jitterdata <- allupperqdata %>%
+  filter(Infection == 1, 
+         FollowUp != 2, 
+         PopIndex %in% signif)  
+
+FUCD8CD127 <- plotFU(boxdata, jitterdata, "CD127")
+  
+print(FUCD8CD127)
+```

@@ -1,0 +1,882 @@
+---
+title: "Manual gating frequency and upper quartile features for Random Forest training datasets"
+output: html_document
+date: "2024-02-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load Libraries
+
+```{r libraries}
+library(tidyverse)
+library(readxl)
+```
+
+# Import & Trim Data
+
+```{r data}
+Classifiers <- "data/Classifiers.xlsx" %>% 
+  read_excel(skip = 2) %>% 
+  select(PTID, Visit, Duplicate, Infection, FollowUp, Ascension) %>% 
+  mutate_all(as.factor)  
+
+
+Freqs_raw <- "data/Freqs.csv" %>% 
+  read_csv() %>% 
+  select(-1, -ncol(.)) %>% # remove file name column and empty last column
+  slice(1:(n() - 2)) %>% # remove last 2 rows (mean and sd exported from FlowJo)
+  distinct() %>% # 3161 1M file is represented twice, remove the duplicate
+  mutate_if(is.character, ~ na_if(., "n/a")) %>%  # define NA as "n/a" 
+  mutate(across(c("PTID", "Visit", "Duplicate"), as.factor)) %>% 
+  mutate_if(~!is.factor(.) && !is.numeric(.), as.numeric) %>% # if column is not a factor, coerce to numeric
+  filter(!(PTID == 3120 & Visit == 1)) #%>%  # removed sample from study due to low cell count and viability
+
+Upperqs_raw <- "data/Upperqs.csv" %>% 
+  read_csv() %>% 
+  select(-1) %>% # remove file name column
+  slice(1:(n() - 2)) %>%# remove last 2 rows (mean and sd exported from FlowJo)
+  distinct() %>% # 3161 1M file is represented twice, remove the duplicate
+  mutate_if(is.character, ~ na_if(., "n/a")) %>%  # define NA as "n/a" 
+  mutate(across(c("PTID", "Visit", "Duplicate"), as.factor)) %>% 
+  mutate_if(~!is.factor(.) && !is.numeric(.), as.numeric) %>% # if column is not a factor, coerce to numeric
+  filter(!(PTID == 3120 & Visit == 1)) #%>%  # removed sample from study due to low cell count and viability
+
+Combined_raw <- Classifiers %>% 
+  inner_join(Freqs_raw, by = c("PTID", "Visit", "Duplicate")) %>% 
+  inner_join(Upperqs_raw, by = c("PTID", "Visit", "Duplicate"))
+
+PopNameOrder <- c(
+  "CD4_TN", "CD4_TSCM", "CD4_Tfh", "CD4_TCM_Th1_2DN", "CD4_TCM_Th1", "CD4_TCM_Th2", 
+  "CD4_TCM_Th1_2DP", "CD4_TCM_Th17", "CD4_TCM_Th1_17", "CD4_TCM_Th17DN", "CD4_TCM_Th17DP", 
+  "CD4_TEM_Th1_2DN", "CD4_TEM_Th1", "CD4_TEM_Th2", "CD4_TEM_Th1_2DP", "CD4_TEM_Th17", 
+  "CD4_TEM_Th1_17", "CD4_TEM_Th17DN", "CD4_TEM_Th17DP", "CD4_TEMRA", "CD4_Treg", 
+  "CD8_TN", "CD8_TSCM", "CD8_Tfh", "CD8_TCM_Tc1_2DN", "CD8_TCM_Tc1", "CD8_TCM_Tc2", 
+  "CD8_TCM_Tc1_2DP", "CD8_TCM_Tc17", "CD8_TCM_Tc1_17", "CD8_TCM_Tc17DN", "CD8_TCM_Tc17DP", 
+  "CD8_TEM_Tc1_2DN", "CD8_TEM_Tc1", "CD8_TEM_Tc2", "CD8_TEM_Tc1_2DP", "CD8_TEM_Tc17", 
+  "CD8_TEM_Tc1_17", "CD8_TEM_Tc17DN", "CD8_TEM_Tc17DP", "CD8_TEMRA", "CD8_Treg")
+```
+
+# Process NA values
+
+```{r process na}
+#Combined_naonlycol <- Combined_raw %>%
+#  select_if(~any(is.na(.)))
+# names(Combined_naonlycol)
+## 227 columns with NA values, all upperq features from low frequency populations
+
+#Combined_naonlyrow <- Combined_naonlycol %>%
+#  filter(rowSums(is.na(.)) > 0) 
+## 54 observations with NA values in at least 1 column
+
+Combined_naimp <- Combined_raw %>% 
+  mutate_if(is.numeric, ~ifelse(is.na(.), mean(., na.rm = TRUE), .)) # impute NA values as mean of column
+
+# Combined_check <- Combined_naimp %>%
+  # select_if(~any(is.na(.)))
+
+# write_csv(Combined_naimp, "data/frequpperqmatrix.csv")
+```
+
+# Generate elements for Random Forest
+
+```{r Elements}
+fun_13 <- Upperqs_raw %>% 
+  colnames() %>% 
+  sapply(sub, pattern = ".*: ", replacement = "") %>% 
+  unique()
+fun_13 <- fun_13[-(1:3)]
+paste0("'", fun_13, "'", collapse = ", ")
+
+label_format <- paste0("\"", fun_13, ":", fun_13, "\"")
+label_format <- noquote(label_format)
+cat(label_format, sep = ", ")
+
+new_freq_16_CD4 <- Freqs_raw %>% 
+  colnames() %>% 
+  sapply(sub, pattern = ".*cluster\\s(.*?)\\s?:.*", replacement = "\\1") %>% 
+  unique()
+new_freq_16_CD4 <- new_freq_16_CD4[grep("^CD4_", new_freq_16_CD4)]
+paste0("'", new_freq_16_CD4, "'", collapse = ", ")
+
+new_freq_16_CD8 <- Freqs_raw %>% 
+  colnames() %>% 
+  sapply(sub, pattern = ".*cluster\\s(.*?)\\s?:.*", replacement = "\\1") %>% 
+  unique()
+new_freq_16_CD8 <- new_freq_16_CD8[grep("^CD8_", new_freq_16_CD8)]
+paste0("'", new_freq_16_CD8, "'", collapse = ", ")
+# remove 'CD8_Treg', 'CD8_TCM_Tc17', 'CD8_TCM_Tc17DP', 'CD8_TEM_Tc17', 'CD8_TEM_Tc17DP' due to undetectable frequencies (see Table S4)
+```
+
+# Remove #frequency and# functional features for low frequency populations (below 0.1%)
+```{r rmlowfreq}
+
+column_means <- colMeans(Freqs_raw[, -c(1:3)], na.rm = TRUE)
+lowfreqcolnames <- names(column_means[column_means < 0.1])
+lowfreqs <- gsub(" phenotypic markers", "", lowfreqcolnames)
+print(lowfreqs)
+#[1] "cluster CD8_TCM_Tc17:"   "cluster CD8_TCM_Tc17DP:" "cluster CD8_TEM_Tc17:"  
+#[4] "cluster CD8_TEM_Tc17DP:" "cluster CD8_Treg:"   
+
+Combined_rmfinal <- Combined_naimp 
+
+columns_to_remove <- sapply(names(Combined_rmfinal), function(col_name) any(sapply(lowfreqs, function(substring) grepl(substring, col_name))))
+print(names(Combined_rmfinal)[columns_to_remove])
+# 100 columns
+
+Combined_rmfinal <- Combined_rmfinal[, !columns_to_remove]
+
+
+for (pop_name_base in PopNameOrder) {
+  # Add ":" to the end of pop_name_base
+  pop_name <- paste(pop_name_base, ":", sep = "")
+  
+  # Identify rows where the column name contains the current population name and "phenotypic markers" with values less than 0.1
+  rows_to_replace <- rowSums(Combined_rmfinal[, grepl(pop_name, names(Combined_rmfinal)) & 
+                                                 grepl("phenotypic markers", names(Combined_rmfinal))] < 0.1) > 0
+  
+  # Identify columns containing the current population name but not "phenotypic markers"
+  popname_cols <- grep(pop_name, names(Combined_rmfinal))
+  popname_notphenotypic_cols <- popname_cols[!grepl("phenotypic markers", names(Combined_rmfinal)[popname_cols])]
+  
+  # Print pop_name
+  print(paste("Population Name:", pop_name))
+  
+  # Print popname_notphenotypic_cols
+  # print(paste("Marker columns:", popname_notphenotypic_cols))
+  
+  # Print the number of instances of "TRUE" in rows_to_replace
+  num_true <- sum(rows_to_replace)
+  print(paste("Number of instances of TRUE in rows_to_replace:", num_true))
+  
+  # Replace values with NA in the identified columns and rows
+  Combined_rmfinal[rows_to_replace, popname_notphenotypic_cols] <- NA
+}
+
+sum(is.na(Combined_rmfinal))
+# 10944 replacements 
+
+Combined_rmfinal <- Combined_rmfinal %>% 
+  mutate_if(is.numeric, ~ifelse(is.na(.), mean(., na.rm = TRUE), .)) # impute NA values as mean of column
+
+sum(is.na(Combined_rmfinal))
+# 0 NA values remain.
+
+```
+
+# Remove functional features with overall very low expression
+```{r rmlowexpress}
+
+# Apply summary function to each column using summarise_all()
+expressionsummary <- Combined_rmfinal %>%
+  select(-(1:39)) %>% 
+  lapply(summary) %>% 
+  lapply(function(x) unlist(x))
+
+# Combine the summary statistics into a dataframe
+summary_dataframe <- do.call(rbind, expressionsummary)
+
+quantile(summary_dataframe[, 5], c(0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.50, 0.75, 0.90, 0.95, 1)) #quantiles of upper quartile expression
+#hist(summary_dataframe[, 5], breaks = 1000, xlim = c(-0.1, 500), plot = TRUE)
+
+gghist_upperq <- ggplot(summary_dataframe, aes(x = summary_dataframe[, 5])) +  
+  geom_histogram(bins = 500, fill = "blue", color = "black") +
+  geom_vline(xintercept = 2, color = "red", linetype = "dashed", size = 0.5) +
+  labs(x = "Upper Quartile Expression", y = "Frequency") +
+  theme_minimal()
+gghist_upperq
+#ggsave("gghist_upperq.png", gghist_upperq, path = "figures/")
+
+#### Remove features for which upper quartile expression is less than 2
+# Extract the "3rd Qu." column
+upperq_expression <- summary_dataframe[, 5]  # Assuming "3rd Qu." statistic is in the 5th column
+
+# Find the row names where "3rd Qu." is below 2
+express_below <- rownames(summary_dataframe[upperq_expression < 2, , drop = FALSE])
+
+# Print the row names
+print(express_below)
+# 221 matches
+
+Combined_rmfinal <- Combined_rmfinal %>%
+  select(-any_of(express_below))
+# 406 features remaining
+```
+
+
+
+# Generate matrices for Random Forest
+
+## CD4 Enrollment
+
+### CD4EnInf01
+
+```{r CD4EnInf01}
+CD4EnInf01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # keep only enrollment samples
+          Infection %in% c(0, 1)  # keep only rows where Infection is 0 or 1
+          ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD4EnInf01_label <- CD4EnInf01 %>% 
+  select(Infection) %>% 
+  rename(label = Infection)
+#write_csv(CD4EnInf01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf01_label.csv")
+
+CD4EnInf01_matrix <- CD4EnInf01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh)) #%>% # arcsinh transform non-frequency values
+#write_csv(CD4EnInf01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf01_matrix.csv")
+```
+
+### CD4EnInf02
+
+```{r CD4EnInf02}
+CD4EnInf02 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # keep only enrollment samples
+          Infection %in% c(0, 2)  # keep only rows where Infection is 0 or 2
+          ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD4EnInf02_label <- CD4EnInf02 %>% 
+  select(Infection) %>% 
+  rename(label = Infection) %>% 
+  mutate_all(~replace(., . == 2, 1)) # change test group outcome (CT+CoP=2) to 1
+#write_csv(CD4EnInf02_label, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf02_label.csv")
+
+CD4EnInf02_matrix <- CD4EnInf02 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD4EnInf02_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf02_matrix.csv")
+```
+
+### CD4EnInf12
+
+```{r CD4EnInf12}
+CD4EnInf12 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # keep only enrollment samples
+          Infection %in% c(1, 2)  # keep only rows where Infection is 1 or 2
+          ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD4EnInf12_label <- CD4EnInf12 %>% 
+  select(Infection) %>% 
+  rename(label = Infection) %>% 
+  mutate_all(~replace(., . == 1, 0)) %>% # change control group outcome (CT+=1) to 0
+  mutate_all(~replace(., . == 2, 1)) # change test group outcome (CT+CoP=2) to 1
+#write_csv(CD4EnInf12_label, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf12_label.csv")
+
+CD4EnInf12_matrix <- CD4EnInf12 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD4EnInf12_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf12_matrix.csv")
+```
+
+### CD4EnInf1FU01
+
+```{r CD4EnInf1FU01}
+CD4EnInf1FU01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # only enrollment
+          Infection == 1 &  # only CT+
+          FollowUp %in% c(0, 1) # remove FU=2 (did not complete 3+ FU visits)
+         ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD4EnInf1FU01_label <- CD4EnInf1FU01 %>% 
+  select(FollowUp) %>% 
+  rename(label = FollowUp)
+#write_csv(CD4EnInf1FU01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf1FU01_label.csv")
+
+CD4EnInf1FU01_matrix <- CD4EnInf1FU01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD4EnInf1FU01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf1FU01_matrix.csv")
+```
+
+### CD4EnInf2FU01
+
+```{r CD4EnInf2FU01}
+CD4EnInf2FU01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # only enrollment
+          Infection == 2 &  # only CT+CoP
+          FollowUp %in% c(0, 1) # remove FU=2 (did not complete 3+ FU visits)
+         ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD4EnInf2FU01_label <- CD4EnInf2FU01 %>% 
+  select(FollowUp) %>% 
+  rename(label = FollowUp)
+#write_csv(CD4EnInf2FU01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf2FU01_label.csv")
+
+CD4EnInf2FU01_matrix <- CD4EnInf2FU01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh)) # arcsinh transform non-frequency values
+#write_csv(CD4EnInf2FU01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf2FU01_matrix.csv")
+```
+
+### CD4EnInf1Asc01
+
+```{r CD4EnInf1Asc01}
+CD4EnInf1Asc01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # only enrollment
+          Infection == 1  # only CT+
+         ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD4EnInf1Asc01_label <- CD4EnInf1Asc01 %>% 
+  select(Ascension) %>% 
+  rename(label = Ascension)
+#write_csv(CD4EnInf1Asc01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf1Asc01_label.csv")
+
+CD4EnInf1Asc01_matrix <- CD4EnInf1Asc01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD4EnInf1Asc01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf1Asc01_matrix.csv")
+```
+
+### CD4EnInf2Asc01
+
+```{r CD4EnInf2Asc01}
+CD4EnInf2Asc01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # only enrollment
+          Infection == 2  # only CT+CoP
+         ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD4EnInf2Asc01_label <- CD4EnInf2Asc01 %>% 
+  select(Ascension) %>% 
+  rename(label = Ascension)
+#write_csv(CD4EnInf2Asc01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf2Asc01_label.csv")
+
+CD4EnInf2Asc01_matrix <- CD4EnInf2Asc01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD4EnInf2Asc01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD4EnInf2Asc01_matrix.csv")
+```
+
+## CD8 Enrollment
+
+### CD8EnInf01
+
+```{r CD8EnInf01}
+CD8EnInf01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # keep only enrollment samples
+          Infection %in% c(0, 1)  # keep only rows where Infection is 0 or 1
+          ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD8EnInf01_label <- CD8EnInf01 %>% 
+  select(Infection) %>% 
+  rename(label = Infection)
+#write_csv(CD8EnInf01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf01_label.csv")
+
+CD8EnInf01_matrix <- CD8EnInf01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh)) #%>% # arcsinh transform non-frequency values
+#write_csv(CD8EnInf01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf01_matrix.csv")
+```
+
+### CD8EnInf02
+
+```{r CD8EnInf02}
+CD8EnInf02 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # keep only enrollment samples
+          Infection %in% c(0, 2)  # keep only rows where Infection is 0 or 2
+          ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD8EnInf02_label <- CD8EnInf02 %>% 
+  select(Infection) %>% 
+  rename(label = Infection) %>% 
+  mutate_all(~replace(., . == 2, 1)) # change test group outcome (CT+CoP=2) to 1
+#write_csv(CD8EnInf02_label, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf02_label.csv")
+
+CD8EnInf02_matrix <- CD8EnInf02 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD8EnInf02_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf02_matrix.csv")
+```
+
+### CD8EnInf12
+
+```{r CD8EnInf12}
+CD8EnInf12 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # keep only enrollment samples
+          Infection %in% c(1, 2)  # keep only rows where Infection is 1 or 2
+          ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD8EnInf12_label <- CD8EnInf12 %>% 
+  select(Infection) %>% 
+  rename(label = Infection) %>% 
+  mutate_all(~replace(., . == 1, 0)) %>% # change control group outcome (CT+=1) to 0
+  mutate_all(~replace(., . == 2, 1)) # change test group outcome (CT+CoP=2) to 1
+#write_csv(CD8EnInf12_label, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf12_label.csv")
+
+CD8EnInf12_matrix <- CD8EnInf12 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD8EnInf12_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf12_matrix.csv")
+```
+
+### CD8EnInf1FU01
+
+```{r CD8EnInf1FU01}
+CD8EnInf1FU01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # only enrollment
+          Infection == 1 &  # only CT+
+          FollowUp %in% c(0, 1) # remove FU=2 (did not complete 3+ FU visits)
+         ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD8EnInf1FU01_label <- CD8EnInf1FU01 %>% 
+  select(FollowUp) %>% 
+  rename(label = FollowUp)
+#write_csv(CD8EnInf1FU01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf1FU01_label.csv")
+
+CD8EnInf1FU01_matrix <- CD8EnInf1FU01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD8EnInf1FU01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf1FU01_matrix.csv")
+```
+
+### CD8EnInf2FU01
+
+```{r CD8EnInf2FU01}
+CD8EnInf2FU01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # only enrollment
+          Infection == 2 &  # only CT+CoP
+          FollowUp %in% c(0, 1) # remove FU=2 (did not complete 3+ FU visits)
+         ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD8EnInf2FU01_label <- CD8EnInf2FU01 %>% 
+  select(FollowUp) %>% 
+  rename(label = FollowUp)
+#write_csv(CD8EnInf2FU01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf2FU01_label.csv")
+
+CD8EnInf2FU01_matrix <- CD8EnInf2FU01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh)) # arcsinh transform non-frequency values
+#write_csv(CD8EnInf2FU01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf2FU01_matrix.csv")
+```
+
+### CD8EnInf1Asc01
+
+```{r CD8EnInf1Asc01}
+CD8EnInf1Asc01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # only enrollment
+          Infection == 1  # only CT+
+         ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD8EnInf1Asc01_label <- CD8EnInf1Asc01 %>% 
+  select(Ascension) %>% 
+  rename(label = Ascension)
+#write_csv(CD8EnInf1Asc01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf1Asc01_label.csv")
+
+CD8EnInf1Asc01_matrix <- CD8EnInf1Asc01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD8EnInf1Asc01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf1Asc01_matrix.csv")
+```
+
+### CD8EnInf2Asc01
+
+```{r CD8EnInf2Asc01}
+CD8EnInf2Asc01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 0 & # only enrollment
+          Infection == 2  # only CT+CoP
+         ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD8EnInf2Asc01_label <- CD8EnInf2Asc01 %>% 
+  select(Ascension) %>% 
+  rename(label = Ascension)
+#write_csv(CD8EnInf2Asc01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf2Asc01_label.csv")
+
+CD8EnInf2Asc01_matrix <- CD8EnInf2Asc01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD8EnInf2Asc01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD8EnInf2Asc01_matrix.csv")
+```
+
+## CD4 1 Month
+
+### CD41MInf01
+
+```{r CD41MInf01}
+CD41MInf01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # keep only 1 month samples
+          Infection %in% c(0, 1)  # keep only rows where Infection is 0 or 1
+          ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD41MInf01_label <- CD41MInf01 %>% 
+  select(Infection) %>% 
+  rename(label = Infection)
+#write_csv(CD41MInf01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf01_label.csv")
+
+CD41MInf01_matrix <- CD41MInf01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh)) #%>% # arcsinh transform non-frequency values
+#write_csv(CD41MInf01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf01_matrix.csv")
+```
+
+### CD41MInf02
+
+```{r CD41MInf02}
+CD41MInf02 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # keep only 1 month samples
+          Infection %in% c(0, 2)  # keep only rows where Infection is 0 or 2
+          ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD41MInf02_label <- CD41MInf02 %>% 
+  select(Infection) %>% 
+  rename(label = Infection) %>% 
+  mutate_all(~replace(., . == 2, 1)) # change test group outcome (CT+CoP=2) to 1
+#write_csv(CD41MInf02_label, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf02_label.csv")
+
+CD41MInf02_matrix <- CD41MInf02 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD41MInf02_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf02_matrix.csv")
+```
+
+### CD41MInf12
+
+```{r CD41MInf12}
+CD41MInf12 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # keep only 1 month samples
+          Infection %in% c(1, 2)  # keep only rows where Infection is 1 or 2
+          ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD41MInf12_label <- CD41MInf12 %>% 
+  select(Infection) %>% 
+  rename(label = Infection) %>% 
+  mutate_all(~replace(., . == 1, 0)) %>% # change control group outcome (CT+=1) to 0
+  mutate_all(~replace(., . == 2, 1)) # change test group outcome (CT+CoP=2) to 1
+#write_csv(CD41MInf12_label, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf12_label.csv")
+
+CD41MInf12_matrix <- CD41MInf12 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD41MInf12_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf12_matrix.csv")
+```
+
+### CD41MInf1FU01
+
+```{r CD41MInf1FU01}
+CD41MInf1FU01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # only 1 month
+          Infection == 1 &  # only CT+
+          FollowUp %in% c(0, 1) # remove FU=2 (did not complete 3+ FU visits)
+         ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD41MInf1FU01_label <- CD41MInf1FU01 %>% 
+  select(FollowUp) %>% 
+  rename(label = FollowUp)
+#write_csv(CD41MInf1FU01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf1FU01_label.csv")
+
+CD41MInf1FU01_matrix <- CD41MInf1FU01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD41MInf1FU01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf1FU01_matrix.csv")
+```
+
+### CD41MInf2FU01
+
+```{r CD41MInf2FU01}
+CD41MInf2FU01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # only 1 month
+          Infection == 2 &  # only CT+CoP
+          FollowUp %in% c(0, 1) # remove FU=2 (did not complete 3+ FU visits)
+         ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD41MInf2FU01_label <- CD41MInf2FU01 %>% 
+  select(FollowUp) %>% 
+  rename(label = FollowUp)
+#write_csv(CD41MInf2FU01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf2FU01_label.csv")
+
+CD41MInf2FU01_matrix <- CD41MInf2FU01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh)) # arcsinh transform non-frequency values
+#write_csv(CD41MInf2FU01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf2FU01_matrix.csv")
+```
+
+### CD41MInf1Asc01
+
+```{r CD41MInf1Asc01}
+CD41MInf1Asc01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # only 1 month
+          Infection == 1  # only CT+
+         ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD41MInf1Asc01_label <- CD41MInf1Asc01 %>% 
+  select(Ascension) %>% 
+  rename(label = Ascension)
+#write_csv(CD41MInf1Asc01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf1Asc01_label.csv")
+
+CD41MInf1Asc01_matrix <- CD41MInf1Asc01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD41MInf1Asc01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf1Asc01_matrix.csv")
+```
+
+### CD41MInf2Asc01
+
+```{r CD41MInf2Asc01}
+CD41MInf2Asc01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # only 1 month
+          Infection == 2  # only CT+CoP
+         ) %>% 
+  select(-contains("CD8_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD41MInf2Asc01_label <- CD41MInf2Asc01 %>% 
+  select(Ascension) %>% 
+  rename(label = Ascension)
+#write_csv(CD41MInf2Asc01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf2Asc01_label.csv")
+
+CD41MInf2Asc01_matrix <- CD41MInf2Asc01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD41MInf2Asc01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD41MInf2Asc01_matrix.csv")
+```
+
+## CD8 1 Month
+
+### CD81MInf01
+
+```{r CD81MInf01}
+CD81MInf01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # keep only 1 month samples
+          Infection %in% c(0, 1)  # keep only rows where Infection is 0 or 1
+          ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD81MInf01_label <- CD81MInf01 %>% 
+  select(Infection) %>% 
+  rename(label = Infection)
+#write_csv(CD81MInf01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf01_label.csv")
+
+CD81MInf01_matrix <- CD81MInf01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh)) #%>% # arcsinh transform non-frequency values
+#write_csv(CD81MInf01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf01_matrix.csv")
+```
+
+### CD81MInf02
+
+```{r CD81MInf02}
+CD81MInf02 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # keep only 1 month samples
+          Infection %in% c(0, 2)  # keep only rows where Infection is 0 or 2
+          ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD81MInf02_label <- CD81MInf02 %>% 
+  select(Infection) %>% 
+  rename(label = Infection) %>% 
+  mutate_all(~replace(., . == 2, 1)) # change test group outcome (CT+CoP=2) to 1
+#write_csv(CD81MInf02_label, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf02_label.csv")
+
+CD81MInf02_matrix <- CD81MInf02 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD81MInf02_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf02_matrix.csv")
+```
+
+### CD81MInf12
+
+```{r CD81MInf12}
+CD81MInf12 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # keep only 1 month samples
+          Infection %in% c(1, 2)  # keep only rows where Infection is 1 or 2
+          ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD81MInf12_label <- CD81MInf12 %>% 
+  select(Infection) %>% 
+  rename(label = Infection) %>% 
+  mutate_all(~replace(., . == 1, 0)) %>% # change control group outcome (CT+=1) to 0
+  mutate_all(~replace(., . == 2, 1)) # change test group outcome (CT+CoP=2) to 1
+#write_csv(CD81MInf12_label, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf12_label.csv")
+
+CD81MInf12_matrix <- CD81MInf12 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD81MInf12_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf12_matrix.csv")
+```
+
+### CD81MInf1FU01
+
+```{r CD81MInf1FU01}
+CD81MInf1FU01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # only 1 month
+          Infection == 1 &  # only CT+
+          FollowUp %in% c(0, 1) # remove FU=2 (did not complete 3+ FU visits)
+         ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD81MInf1FU01_label <- CD81MInf1FU01 %>% 
+  select(FollowUp) %>% 
+  rename(label = FollowUp)
+#write_csv(CD81MInf1FU01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf1FU01_label.csv")
+
+CD81MInf1FU01_matrix <- CD81MInf1FU01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD81MInf1FU01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf1FU01_matrix.csv")
+```
+
+### CD81MInf2FU01
+
+```{r CD81MInf2FU01}
+CD81MInf2FU01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # only 1 month
+          Infection == 2 &  # only CT+CoP
+          FollowUp %in% c(0, 1) # remove FU=2 (did not complete 3+ FU visits)
+         ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD81MInf2FU01_label <- CD81MInf2FU01 %>% 
+  select(FollowUp) %>% 
+  rename(label = FollowUp)
+#write_csv(CD81MInf2FU01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf2FU01_label.csv")
+
+CD81MInf2FU01_matrix <- CD81MInf2FU01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh)) # arcsinh transform non-frequency values
+#write_csv(CD81MInf2FU01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf2FU01_matrix.csv")
+```
+
+### CD81MInf1Asc01
+
+```{r CD81MInf1Asc01}
+CD81MInf1Asc01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # only 1 month
+          Infection == 1  # only CT+
+         ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD81MInf1Asc01_label <- CD81MInf1Asc01 %>% 
+  select(Ascension) %>% 
+  rename(label = Ascension)
+#write_csv(CD81MInf1Asc01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf1Asc01_label.csv")
+
+CD81MInf1Asc01_matrix <- CD81MInf1Asc01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD81MInf1Asc01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf1Asc01_matrix.csv")
+```
+
+### CD81MInf2Asc01
+
+```{r CD81MInf2Asc01}
+CD81MInf2Asc01 <- Combined_rmfinal %>% 
+  filter(Duplicate == 0 & # remove duplicates
+          Visit == 1 & # only 1 month
+          Infection == 2  # only CT+CoP
+         ) %>% 
+  select(-contains("CD4_")) %>% 
+  arrange(PTID) # sort by ascending PTID
+
+CD81MInf2Asc01_label <- CD81MInf2Asc01 %>% 
+  select(Ascension) %>% 
+  rename(label = Ascension)
+#write_csv(CD81MInf2Asc01_label, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf2Asc01_label.csv")
+
+CD81MInf2Asc01_matrix <- CD81MInf2Asc01 %>% 
+  select(-(1:6)) %>% 
+  mutate_all(~ ifelse(. < 0, 0, .)) %>% # replace negative values with 0
+  mutate(across(-contains("phenotypic markers"), asinh))  # arcsinh transform non-frequency values
+#write_csv(CD81MInf2Asc01_matrix, "data/chlamydia_mangate_rmfinal/inputdata/CD81MInf2Asc01_matrix.csv")
+```

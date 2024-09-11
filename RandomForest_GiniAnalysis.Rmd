@@ -1,0 +1,485 @@
+---
+title: "Random Forest and Gini Analysis"
+output: html_document
+date: "2024-07-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries and Data
+
+```{python libraries, echo = TRUE, results = 'hide'}
+import pandas as pd
+import numpy as np
+import re
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import roc_curve,auc
+import matplotlib.pyplot as plt
+
+from sklearn.metrics import roc_auc_score
+import seaborn as sns
+from scipy.stats import ranksums
+import pickle
+```
+
+## Set up elements for each Random forest trial
+
+```{python elements, echo = TRUE, results = 'hide'}
+## Infection Comparisons
+
+#'''
+## CD4EnInf01
+comparename = "CD4EnInf01"
+ROClabel = 'En CD4 Uninf vs CT+'
+ranklabel = 'Compared to Uninf'
+flipped = False
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD4EnInf02
+comparename = "CD4EnInf02"
+ROClabel = 'En CD4 Uninf vs CT+CoP'
+ranklabel = 'Compared to Uninf'
+flipped = False
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD4EnInf12
+comparename = "CD4EnInf12"
+ROClabel = 'En CD4 CT+ vs CT+CoP'
+ranklabel = 'Compared to CT+'
+flipped = False
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD41MInf01
+comparename = "CD41MInf01"
+ROClabel = '1M CD4 Uninf vs CT+'
+ranklabel = 'Compared to Uninf'
+flipped = False
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD41MInf02
+comparename = "CD41MInf02"
+ROClabel = '1M CD4 Uninf vs CT+CoP'
+ranklabel = 'Compared to Uninf'
+flipped = False
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD41MInf12
+comparename = "CD41MInf12"
+ROClabel = '1M CD4 CT+ vs CT+CoP'
+ranklabel = 'Compared to CT+'
+flipped = False
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD8EnInf01
+comparename = "CD8EnInf01"
+ROClabel = 'En CD8 Uninf vs CT+'
+ranklabel = 'Compared to Uninf'
+flipped = False
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD8EnInf02
+comparename = "CD8EnInf02"
+ROClabel = 'En CD8 Uninf vs CT+CoP'
+ranklabel = 'Compared to Uninf'
+flipped = False
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD8EnInf12
+comparename = "CD8EnInf12"
+ROClabel = 'En CD8 CT+ vs CT+CoP'
+ranklabel = 'Compared to CT+'
+flipped = False
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD81MInf01
+comparename = "CD81MInf01"
+ROClabel = '1M CD8 Uninf vs CT+'
+ranklabel = 'Compared to Uninf'
+flipped = False
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD81MInf02
+comparename = "CD81MInf02"
+ROClabel = '1M CD8 Uninf vs CT+CoP'
+ranklabel = 'Compared to Uninf'
+flipped = False
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD81MInf12
+comparename = "CD81MInf12"
+ROClabel = '1M CD8 CT+ vs CT+CoP'
+ranklabel = 'Compared to CT+'
+flipped = False
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+## Follow-Up Comparisons
+
+'''
+## CD4EnInf1FU01
+comparename = "CD4EnInf1FU01"
+ROClabel = 'En CD4 CT+: FU+ vs FU-'
+ranklabel = 'Compared to FU+'
+flipped = True
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD4EnInf2FU01
+comparename = "CD4EnInf2FU01"
+ROClabel = 'En CD4 CT+CoP: FU+ vs FU-'
+ranklabel = 'Compared to FU+'
+flipped = True
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD41MInf1FU01
+comparename = "CD41MInf1FU01"
+ROClabel = '1M CD4 CT+: FU+ vs FU-'
+ranklabel = 'Compared to FU+'
+flipped = True
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD41MInf2FU01
+comparename = "CD41MInf2FU01"
+ROClabel = '1M CD4 CT+CoP: FU+ vs FU-'
+ranklabel = 'Compared to FU+'
+flipped = True
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD8EnInf1FU01
+comparename = "CD8EnInf1FU01"
+ROClabel = 'En CD8 CT+: FU+ vs FU-'
+ranklabel = 'Compared to FU+'
+flipped = True
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD8EnInf2FU01
+comparename = "CD8EnInf2FU01"
+ROClabel = 'En CD8 CT+CoP: FU+ vs FU-'
+ranklabel = 'Compared to FU+'
+flipped = True
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD81MInf1FU01
+comparename = "CD81MInf1FU01"
+ROClabel = '1M CD8 CT+: FU+ vs FU-'
+ranklabel = 'Compared to FU+'
+flipped = True
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD81MInf2FU01
+comparename = "CD81MInf2FU01"
+ROClabel = '1M CD8 CT+CoP: FU+ vs FU-'
+ranklabel = 'Compared to FU+'
+flipped = True
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+## Endo Comparisons
+
+'''
+## CD4EnInf1Asc01
+comparename = "CD4EnInf1Asc01"
+ROClabel = 'En CD4 CT+: Endo+ vs Endo-'
+ranklabel = 'Compared to Endo+'
+flipped = True
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD4EnInf2Asc01
+comparename = "CD4EnInf2Asc01"
+ROClabel = 'En CD4 CT+CoP: Endo+ vs Endo-'
+ranklabel = 'Compared to Endo+'
+flipped = True
+new_freq_16=['CD4_Tfh', 'CD4_TSCM', 'CD4_TN', 'CD4_TCM_Th17', 'CD4_TCM_Th17DN', 'CD4_TCM_Th17DP', 'CD4_TCM_Th1_17', 'CD4_TCM_Th1', 'CD4_TCM_Th1_2DN', 'CD4_TCM_Th2', 'CD4_TEM_Th17', 'CD4_TEM_Th17DN', 'CD4_TEM_Th17DP', 'CD4_TEM_Th1_17', 'CD4_TEM_Th1', 'CD4_TEM_Th1_2DN', 'CD4_TEM_Th2', 'CD4_TEMRA', 'CD4_Treg']
+#'''
+
+'''
+## CD8EnInf1Asc01
+comparename = "CD8EnInf1Asc01"
+ROClabel = 'En CD8 CT+: Endo+ vs Endo-'
+ranklabel = 'Compared to Endo+'
+flipped = True
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+'''
+## CD8EnInf2Asc01
+comparename = "CD8EnInf2Asc01"
+ROClabel = 'En CD8 CT+CoP: Endo+ vs Endo-'
+ranklabel = 'Compared to Endo+'
+flipped = True
+new_freq_16=['CD8_Tfh', 'CD8_TSCM', 'CD8_TN', 'CD8_TCM_Tc17DN', 'CD8_TCM_Tc1_17', 'CD8_TCM_Tc1', 'CD8_TCM_Tc1_2DN', 'CD8_TCM_Tc2', 'CD8_TEM_Tc17DN', 'CD8_TEM_Tc1_17', 'CD8_TEM_Tc1', 'CD8_TEM_Tc1_2DN', 'CD8_TEM_Tc2', 'CD8_TEMRA']
+#'''
+
+```
+
+## Random forest
+
+Run the code below for each comparison defined above. Matrices were generated previously using RandomForestMatrixPrep.Rmd.
+
+To train models with manually gated frequency features only (Fig S2, Table S5), select only frequency features (first 19 columns for CD4; first 15 columns for CD8) in the matrix before proceeding with the execution.
+
+```{python Randomforest, echo = TRUE, results = 'hide'}
+## Input train matrix
+data_matrix = pd.read_csv(f"data/chlamydia_mangate_rmfinal/inputdata/{comparename}_matrix.csv")
+
+sub_matrix=np.array(data_matrix)
+
+## Input train label
+data_label = pd.read_csv(f"data/chlamydia_mangate_rmfinal/inputdata/{comparename}_label.csv")
+
+cluster_label=list(data_label['label'])
+print(sub_matrix.shape,len(cluster_label))
+
+## Define functional features
+fun_13=['161Dy_CTLA4', '164Dy_CD95', '167Er_CCR7', '151Eu_CD107a_and_Bead_3', '153Eu_CXCR5_and_Bead_4', '155Gd_PD-1', '156Gd_CXCR3', '158Gd_CD27', '160Gd_CD28', '165Ho_CD127_and_Bead_5', '143Nd_CD45RA', '150Nd_HLA-DR', '141Pr_CCR6', '149Sm_CCR4', '154Sm_CD71', '169Tm_CD25', '171Yb_CCR5', '172Yb_CD38', '174Yb_CD94']
+
+## Random Forest Model
+sub_features_name=data_matrix.columns
+gini_matrix = np.empty((0,len(sub_features_name)), float)
+
+comparison_pred=[] ###
+comparison_true=[] ###
+comparison_auc=[]
+random_state = np.random.RandomState(0)
+for i in range(0,30,1):
+    clf = RandomForestClassifier(random_state=random_state)
+    cv = StratifiedKFold(n_splits=5,shuffle=True)
+    single_time_prob=[]
+    single_time_true=[]
+
+    for train,test in cv.split(sub_matrix,np.array(cluster_label)):
+        clf.fit(sub_matrix[train],np.array(cluster_label)[np.array(train)])
+        gini=clf.feature_importances_
+        gini_matrix = np.append(gini_matrix, [gini], axis=0)
+        lr_probs = clf.predict_proba(sub_matrix[test])
+        lr_probs = lr_probs[:, 1]
+        comparison_pred+=list(lr_probs) ###
+        comparison_true+=list(np.array(cluster_label)[np.array(test)]) ###
+        single_time_prob+=list(lr_probs)
+        single_time_true+=list(np.array(cluster_label)[np.array(test)])
+    fpr, tpr, t = roc_curve(single_time_true, single_time_prob)
+    comparison_auc.append(auc(fpr, tpr))
+
+## AUC Result .csv
+auc_csv_save = pd.DataFrame(data=comparison_auc, columns=['AUC_result'])
+auc_csv_save.to_csv(f"data/chlamydia_mangate_rmfinal/auc_result/{comparename}_aucresult.csv")
+
+# AUC record for ploting the AUC curve
+dict = {'pred':comparison_pred,'true':comparison_true}
+f = open(f"data/chlamydia_mangate_rmfinal/auc_result/{comparename}_auc.pkl","wb")
+pickle.dump(dict,f)
+f.close()
+```
+
+## Gini feature importance analysis
+
+```{python Gini}
+## Gini Score Features Rank .csv
+gini_matrix=np.mean(gini_matrix, axis=0)
+sorted_idx = gini_matrix.argsort()
+features_rank=np.argsort(np.argsort(-gini_matrix[sorted_idx]))+1
+feature_rank_csv = pd.DataFrame(data=np.array(sub_features_name)[sorted_idx], columns=['features title'])
+feature_rank_csv['gini_score']=gini_matrix[sorted_idx]
+feature_rank_csv['rank']=features_rank
+feature_rank_csv.to_csv(f"data/chlamydia_mangate_rmfinal/features_rank/{comparename}_featuresrank.csv")
+
+## All Features Rank .csv
+
+def plot_boxplot(in_sst,in_df_total,in_cluster_label,in_cluster_num):
+    one_marker=in_df_total.iloc[:,np.array(in_sst)]
+    one_marker_arr=np.array(one_marker)
+    get_pvalue=[]
+    get_compare_uplow=[]
+
+    infection_dfv_0=np.array(in_cluster_label)
+    for cluster_i in range(0,in_cluster_num,1):
+        data_T=[]
+        data_F=[]
+        for iid in range(0,len(in_cluster_label),1):
+            get_val=infection_dfv_0[iid]
+            if get_val==1:
+                data_T.append(one_marker_arr[iid][cluster_i])
+            elif get_val==0:
+                data_F.append(one_marker_arr[iid][cluster_i])
+        if not flipped: # compare to contrel group(label=0)
+            if np.mean(data_T)>np.mean(data_F): # save "up" if data_T->label 1 > data_F->label 0
+                get_compare_uplow.append('up')
+            else:
+                get_compare_uplow.append('low')
+        else:  # compare to contrel group(label=1)
+            if np.mean(data_T)>np.mean(data_F): # save "low" if data_T->label 1 > data_F->label 0
+                get_compare_uplow.append('low')
+            else:
+                get_compare_uplow.append('up')
+        get_pvalue.append(ranksums(data_T, data_F).pvalue)
+    return get_pvalue,get_compare_uplow
+
+features_name=data_matrix.columns
+
+cluster_num=0
+for visited in features_name:
+  if "phenotypic markers" in visited:
+    cluster_num+=1
+
+gini_name_lst=np.array(feature_rank_csv["features title"])
+cluster_number_lst,arrow_compare_to_ctrl,total_p=[],[],[]
+df_total=pd.DataFrame(data=data_matrix, columns=features_name)
+pvalue_csv=pd.DataFrame(data=[i for i in new_freq_16], columns=['cluster']) # pulled from 'boxplot initial'
+upper_lower_csv=pd.DataFrame(data=[i for i in new_freq_16], columns=['cluster']) # pulled from 'boxplot initial'
+
+top_5_hit=[]
+
+for i in np.array(features_name)[sorted_idx]:
+  top_5_hit.append(i.split(": ")[1])
+
+top_5_hit=list(np.unique(top_5_hit))
+if 'phenotypic markers' in top_5_hit:
+    top_5_hit.remove('phenotypic markers')
+top_5_hit_idx=[fun_13.index(i) for i in top_5_hit]
+print(top_5_hit_idx,cluster_num,len(cluster_label))
+for pick_idx in range(0,len(top_5_hit_idx),1):
+  sst = [ (find_name) for find_name in range(0,len(features_name),1) if features_name[find_name].split(': ')[1] == fun_13[top_5_hit_idx[pick_idx]]]
+  find_cluster=[re.split(': |cluster ',find_name)[1] for find_name in features_name[sst]]
+  get_p,get_compare_up_low=plot_boxplot(sst,df_total,cluster_label,len(sst))
+  fix_get_compare_up_low = [get_compare_up_low[find_cluster.index(find_name)] if find_name in find_cluster else "None" for find_name in new_freq_16]
+  upper_lower_csv[top_5_hit[pick_idx]]=fix_get_compare_up_low
+  fix_get_p = [get_p[find_cluster.index(find_name)] if find_name in find_cluster else "None" for find_name in new_freq_16]
+  pvalue_csv[top_5_hit[pick_idx]]=fix_get_p
+
+sst=[]
+for i in range(0,cluster_num,1):
+    sst.append(i)
+get_p,get_compare_up_low=plot_boxplot(sst,df_total,cluster_label,cluster_num)
+pvalue_csv['phenotype']=get_p
+upper_lower_csv['phenotype']=get_compare_up_low
+
+
+
+unique_name=[re.split(": | ",i)[2] for i in gini_name_lst]
+unique_name=list(np.unique(unique_name))
+features_idx_dict={}
+
+for cluster_nam in range(0,len(gini_name_lst),1):
+    get_per_name=re.split(": | ",gini_name_lst[cluster_nam])[1:3]
+    cluster_number_lst.append(get_per_name[0])
+    if get_per_name[1] not in features_idx_dict:
+        temp_list=[]
+    else:
+        temp_list=features_idx_dict[get_per_name[1]]
+    temp_list.append(cluster_nam)
+    features_idx_dict[get_per_name[1]]=temp_list
+
+    if get_per_name[1]=='phenotypic':
+        arrow_compare_to_ctrl.append(upper_lower_csv['phenotype'][list(upper_lower_csv['cluster']).index(get_per_name[0])])
+        total_p.append(pvalue_csv['phenotype'][list(pvalue_csv['cluster']).index(get_per_name[0])])
+    else:
+        arrow_compare_to_ctrl.append(upper_lower_csv[get_per_name[1]][list(upper_lower_csv['cluster']).index(get_per_name[0])])
+        total_p.append(pvalue_csv[get_per_name[1]][list(pvalue_csv['cluster']).index(get_per_name[0])])
+feature_rank_csv['p_value']=total_p
+feature_rank_csv['arrow_compare_to_ctrl']=arrow_compare_to_ctrl
+
+
+Functional_Marker,Avg_Gini,Gini_score_list,Cluster,P_Value,Upper_or_Lower=[],[],[],[],[],[]
+
+for feature_nam in unique_name:
+    Functional_Marker.append(feature_nam)
+    Avg_Gini.append(np.mean(np.array(feature_rank_csv['gini_score'])[features_idx_dict[feature_nam]]))
+    get_sort_list=np.argsort(np.array(feature_rank_csv['p_value'])[features_idx_dict[feature_nam]])
+
+    get_temp=np.array(feature_rank_csv['p_value'])[features_idx_dict[feature_nam]]
+    get_sort_temp=get_temp[get_sort_list]
+    keep_idx=1
+    for get_idxs in range(0,len(get_sort_temp),1):
+        if get_sort_temp[get_idxs]>0.05:
+            keep_idx=get_idxs
+            break
+
+    P_Value.append(get_temp[get_sort_list][:keep_idx])
+    get_temp=np.array(cluster_number_lst)[features_idx_dict[feature_nam]]
+    Cluster.append(get_temp[get_sort_list][:keep_idx])
+
+    get_temp=np.array(feature_rank_csv['gini_score'])[features_idx_dict[feature_nam]]
+    Gini_score_list.append(get_temp[get_sort_list][:keep_idx])
+
+    get_temp=np.array(feature_rank_csv['arrow_compare_to_ctrl'])[features_idx_dict[feature_nam]]
+    Upper_or_Lower.append(get_temp[get_sort_list][:keep_idx])
+
+
+get_sort_list=list(reversed(np.argsort(Avg_Gini)))
+Functional_Marker=np.array(Functional_Marker)[get_sort_list]
+Avg_Gini=np.array(Avg_Gini)[get_sort_list]
+Gini_score_list=[Gini_score_list[i] for i in get_sort_list]
+Cluster=[Cluster[i] for i in get_sort_list]
+P_Value=[P_Value[i] for i in get_sort_list]
+Upper_or_Lower=[Upper_or_Lower[i] for i in get_sort_list]
+
+
+new_Functional_Marker,new_Avg_Gini,new_Gini_score_list,new_Cluster,new_P_Value,new_Upper_or_Lower=list(),list(),list(),list(),list(),list()
+for i_fm in range(0,len(Functional_Marker),1):
+    for j_pv in range(0,len(P_Value[i_fm]),1):
+        new_Functional_Marker.append(Functional_Marker[i_fm])
+        new_Avg_Gini.append(round(Avg_Gini[i_fm],4))
+        new_Gini_score_list.append(round(Gini_score_list[i_fm][j_pv],4))
+        new_Cluster.append(Cluster[i_fm][j_pv])
+        new_P_Value.append(P_Value[i_fm][j_pv])
+        new_Upper_or_Lower.append(Upper_or_Lower[i_fm][j_pv])
+
+
+p_range=[[0,0.0001],[0.0001,0.001],[0.001,0.01],[0.01,0.05],[0.05,1]]
+p_range_label=['****P<0.0001','***P<0.001','**P<0.01','*P<0.05','None']
+newp_label=[]
+for every_p_score in new_P_Value:
+    for in_p_range in range(0,len(p_range),1):
+        if every_p_score>=p_range[in_p_range][0] and every_p_score<p_range[in_p_range][1]:
+            newp_label.append(p_range_label[in_p_range])
+
+final_csv=pd.DataFrame(data=new_Functional_Marker, columns=['Marker'])
+final_csv['Avg Gini Score']=new_Avg_Gini
+final_csv['Gini Score']=new_Gini_score_list
+final_csv['Cluster']=new_Cluster
+final_csv['P_Value']=newp_label
+final_csv[ranklabel]=new_Upper_or_Lower # custom name each time
+final_csv.to_csv(f"data/chlamydia_mangate_rmfinal/allfeatures_rank/{comparename}_allfeaturesrank.csv",index=False)
+print(final_csv)
+```
