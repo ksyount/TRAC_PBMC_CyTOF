@@ -4,7 +4,7 @@ Data and code from the research article entitled "Unique T cell signatures assoc
 
 FCS and CSV data files referenced here can be accessed at ImmPort.org at accession \# \_\_\_\_
 
-#### Automated gating
+#### tSNE & automated gating
 
 Code used to perform automated gating by k-means clustering (Figure S3A-B,D-E):
 
@@ -40,7 +40,7 @@ Code used to run random forest models and Gini feature importance analysis:
 
 -   RandomForest_GiniAnalysis.Rmd
 
-##### For manually gated frequency features and upper quartile expression features (Fig S3G, Fig S4A):
+##### For manually gated frequency features and upper quartile expression features (Fig S3G-H, Fig S4A-B):
 
 -   Chi-Jane
 
