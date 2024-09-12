@@ -4,13 +4,13 @@ Data and code from the research article entitled "Unique T cell signatures assoc
 
 FCS and CSV data files referenced here can be accessed at ImmPort.org at accession \# \_\_\_\_
 
-#### tSNE & automated gating
+#### 1. tSNE & automated gating
 
 Code used to perform automated gating by k-means clustering (Figure S3A-B,D-E):
 
 -   Chi-Jane
 
-#### Feature engineering and random forest training matrix generation
+#### 2. Feature engineering and random forest training matrix generation
 
 ##### For manually gated frequency features and upper quartile expression features:
 
@@ -30,7 +30,7 @@ Code used to generate upper quartile features and create matrices for random for
 
 -   Chi-Jane
 
-#### Random forest model & Gini feature importance analysis
+#### 3. Random forest model & Gini feature importance analysis
 
 ##### For manually gated frequency features and upper quartile expression features (Fig 3A,H; Fig 4E,F; Fig 6A,B; Fig S2):
 
@@ -44,7 +44,7 @@ Code used to run random forest models and Gini feature importance analysis:
 
 -   Chi-Jane
 
-#### Upper quartile expression plots
+#### 4. Upper quartile expression plots
 
 Download the following data files from ImmPort:
 
