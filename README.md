@@ -8,7 +8,7 @@ FCS and CSV data files referenced here can be accessed at ImmPort.org at accessi
 
 Code used to perform automated gating by k-means clustering (Figure S3A-B,D-E):
 
--   Chi-Jane
+-   Fourth section of PBMC_CYTOF_RandomForest_Frequency.ipynb 
 
 #### 2. Feature engineering and random forest training matrix generation
 
@@ -28,7 +28,7 @@ Code used to generate upper quartile features and create matrices for random for
 
 ##### For automated gating frequency features:
 
--   Chi-Jane
+-   Fifth section of PBMC_CYTOF_RandomForest_Frequency.ipynb 
 
 #### 3. Random forest model & Gini feature importance analysis
 
@@ -42,7 +42,7 @@ Code used to run random forest models and Gini feature importance analysis:
 
 ##### For manually gated frequency features and upper quartile expression features (Fig S3G-H, Fig S4A-B):
 
--   Chi-Jane
+-   Seventh and Eighth section of PBMC_CYTOF_RandomForest_Frequency.ipynb 
 
 #### 4. Upper quartile expression plots
 
