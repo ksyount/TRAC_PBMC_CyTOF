@@ -2,7 +2,7 @@
 
 Data and code from the research article entitled "Unique T cell signatures associated with reduced Chlamydia trachomatis reinfection in a highly exposed cohort"
 
-FCS and CSV data files referenced here can be accessed at ImmPort.org at accession \# \_\_\_\_
+FCS and CSV data files referenced here can be accessed at ImmPort.org at accession \#SDY2772
 
 #### 1. tSNE & automated gating
 
