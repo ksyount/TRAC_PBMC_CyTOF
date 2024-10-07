@@ -2,11 +2,17 @@
 
 Data and code from the research article entitled "Unique T cell signatures associated with reduced Chlamydia trachomatis reinfection in a highly exposed cohort"
 
-FCS and CSV data files referenced here can be accessed at ImmPort.org at accession \#SDY2772
+Data files referenced here can be accessed at ImmPort.org at accession \#SDY2772
 
 #### 1. tSNE & automated gating
 
-Code used to perform automated gating by k-means clustering (Figure S3A-B,D-E):
+Download the following data files from ImmPort:
+
+-   post_combat_gated_CD4.csv (downsampled and batch-corrected CyTOF expression data, manually gated on CD4+ T cells for further analysis)
+
+-   post_combat_gated_CD8.csv (downsampled and batch-corrected CyTOF expression data, manually gated on CD8+ T cells for further analysis)
+
+Code used to perform automated gating by k-means clustering (Figure 3A-B,D-E):
 
 -   "Automated gating & tSNE visualization" section in PBMC_CYTOF_RandomForest_Frequency.ipynb 
 
@@ -32,7 +38,7 @@ Code used to generate upper quartile features and create matrices for random for
 
 #### 3. Random forest model & Gini feature importance analysis
 
-##### For manually gated frequency features and upper quartile expression features (Fig 3A,H; Fig 4E,F; Fig 6A,B; Fig S2):
+##### For manually gated frequency features and upper quartile expression features (Fig 4A,H; Fig 6A,B; Fig S2; Fig S3E,F):
 
 Matrices were generated previously (see above).
 
@@ -40,7 +46,7 @@ Code used to run random forest models and Gini feature importance analysis:
 
 -   RandomForest_GiniAnalysis.Rmd
 
-##### For manually gated frequency features and upper quartile expression features (Fig S3G-H, Fig S4A-B):
+##### For manually gated frequency features and upper quartile expression features (Fig 3G-H, Fig S4A-B):
 
 -   "Random forest training & Gini feature importance analysis" section in PBMC_CYTOF_RandomForest_Frequency.ipynb 
 
@@ -52,6 +58,6 @@ Download the following data files from ImmPort:
 
 -   expressiondata.csv
 
-Code used to generate Figure 3B-G,I-M and Figure 6C-F:
+Code used to generate Figure 4B-G,I-M and Figure 6C-F:
 
 -   UpperQuartileExpressionPlots.Rmd
