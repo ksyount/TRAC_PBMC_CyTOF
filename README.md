@@ -4,7 +4,7 @@ Data and code from the research article entitled "Unique T cell signatures assoc
 
 Data files referenced here can be accessed at ImmPort.org at accession \#SDY2772
 
-#### 1. tSNE & automated gating
+#### 1. tSNE & automated gating (Figure 3A-B,D-E)
 
 Download the following data files from ImmPort:
 
@@ -12,13 +12,11 @@ Download the following data files from ImmPort:
 
 -   post_combat_gated_CD8.csv (downsampled and batch-corrected CyTOF expression data, manually gated on CD8+ T cells for further analysis)
 
-Code used to perform automated gating by k-means clustering (Figure 3A-B,D-E):
+Code used to perform automated gating by k-means clustering:
 
--   "Automated gating & tSNE visualization" section in PBMC_CYTOF_RandomForest_Frequency.ipynb 
+-   PBMC_CYTOF_AutomatedGating.ipynb 
 
 #### 2. Feature engineering and random forest training matrix generation
-
-##### For manually gated frequency features and upper quartile expression features:
 
 Download the following data files from ImmPort:
 
@@ -32,13 +30,7 @@ Code used to generate upper quartile features and create matrices for random for
 
 -   RandomForestMatrixPrep.Rmd
 
-##### For automated gating frequency features:
-
--   "Frequency Features engineering" section in PBMC_CYTOF_RandomForest_Frequency.ipynb 
-
-#### 3. Random forest model & Gini feature importance analysis
-
-##### For manually gated frequency features and upper quartile expression features (Fig 4A,H; Fig 6A,B; Fig S2; Fig S3E,F):
+#### 3. Random forest model & Gini feature importance analysis (Fig 4A,H; Fig 6A,B; Fig S2E,F; Table S6-8)
 
 Matrices were generated previously (see above).
 
@@ -46,11 +38,7 @@ Code used to run random forest models and Gini feature importance analysis:
 
 -   RandomForest_GiniAnalysis.Rmd
 
-##### For manually gated frequency features and upper quartile expression features (Fig 3G-H, Fig S4A-B):
-
--   "Random forest training & Gini feature importance analysis" section in PBMC_CYTOF_RandomForest_Frequency.ipynb 
-
-#### 4. Upper quartile expression plots
+#### 4. Upper quartile expression plots (Fig 4B-G,I-M; Fig 6C-F)
 
 Download the following data files from ImmPort:
 
@@ -58,6 +46,6 @@ Download the following data files from ImmPort:
 
 -   expressiondata.csv
 
-Code used to generate Figure 4B-G,I-M and Figure 6C-F:
+Code used to generate figures:
 
 -   UpperQuartileExpressionPlots.Rmd
